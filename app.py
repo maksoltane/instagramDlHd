@@ -11,6 +11,8 @@ import subprocess
 import os
 import re
 import json
+import tempfile
+import zipfile
 from pathlib import Path
 
 app = Flask(__name__)
@@ -226,6 +228,73 @@ def download_media():
         }), 500
     except Exception as e:
         return jsonify({'error': f'Error: {str(e)}'}), 500
+
+
+@app.route('/split-video', methods=['POST'])
+def split_video():
+    """Découpe une vidéo en N morceaux égaux via ffmpeg, sauvegarde dans ~/Downloads."""
+    if 'video' not in request.files:
+        return jsonify({'error': 'Aucun fichier vidéo envoyé'}), 400
+
+    video_file = request.files['video']
+    parts = request.form.get('parts', '2')
+
+    try:
+        parts = int(parts)
+        if not 2 <= parts <= 10:
+            raise ValueError
+    except ValueError:
+        return jsonify({'error': 'Nombre de morceaux invalide (2-10)'}), 400
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_path = os.path.join(tmpdir, video_file.filename)
+        video_file.save(input_path)
+
+        # Obtenir la durée avec ffprobe
+        probe = subprocess.run(
+            ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration',
+             '-of', 'default=noprint_wrappers=1:nokey=1', input_path],
+            capture_output=True, text=True, timeout=30
+        )
+        if probe.returncode != 0 or not probe.stdout.strip():
+            return jsonify({'error': 'Impossible de lire la durée de la vidéo'}), 500
+
+        duration = float(probe.stdout.strip())
+        part_duration = duration / parts
+        base_name = Path(video_file.filename).stem
+        ext = Path(video_file.filename).suffix or '.mp4'
+
+        # Découper avec ffmpeg et sauvegarder dans ~/Downloads
+        created_files = []
+        for i in range(parts):
+            start = i * part_duration
+            out_name = f"{base_name}_part{i + 1}{ext}"
+            out_path = os.path.join(DOWNLOADS_DIR, out_name)
+
+            cmd = [
+                'ffmpeg', '-y', '-i', input_path,
+                '-ss', f'{start:.3f}', '-t', f'{part_duration:.3f}',
+                '-c', 'copy', '-avoid_negative_ts', '1',
+                out_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode != 0:
+                return jsonify({'error': f'Erreur ffmpeg partie {i+1}: {result.stderr[-300:]}'}), 500
+
+            file_size = os.path.getsize(out_path)
+            created_files.append({
+                'name': out_name,
+                'size': file_size,
+                'start': round(start, 1),
+                'duration': round(part_duration, 1)
+            })
+
+        return jsonify({
+            'success': True,
+            'totalDuration': round(duration, 1),
+            'parts': parts,
+            'files': created_files
+        })
 
 
 @app.route('/health', methods=['GET'])

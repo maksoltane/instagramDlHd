@@ -15,7 +15,11 @@
       "Bash(gallery-dl --cookies-from-browser chrome -d /tmp/test_gallery 'https://www.instagram.com/p/DVI4dPVDI98/')",
       "Bash(python3 -c \"from PIL import Image; img=Image.open\\(''/tmp/test_gallery/instagram/skn.hmm/3839566982262067068.jpg''\\); print\\(f''{img.size[0]}x{img.size[1]}''\\)\")",
       "Bash(brew install exiftool)",
-      "Bash(gallery-dl --cookies-from-browser chrome --directory '.' -d ~/Downloads 'https://www.instagram.com/p/DVI4dPVDI98/')"
+      "Bash(gallery-dl --cookies-from-browser chrome --directory '.' -d ~/Downloads 'https://www.instagram.com/p/DVI4dPVDI98/')",
+      "Bash(ls /Users/Mak/Documents/xproject/instagramDlHd/*.py)",
+      "Bash(xargs kill:*)",
+      "Bash(python app.py)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/health)"
     ]
   }
 }
