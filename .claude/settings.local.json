@@ -19,7 +19,15 @@
       "Bash(ls /Users/Mak/Documents/xproject/instagramDlHd/*.py)",
       "Bash(xargs kill:*)",
       "Bash(python app.py)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/health)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/static/css/style.css)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/static/js/app.js)",
+      "Bash(yt-dlp --cookies-from-browser chrome --dump-json \"https://www.instagram.com/p/DUz1jVBjMJP/\")",
+      "Bash(curl -s -X POST http://localhost:8080/download -H 'Content-Type: application/json' -d '{\"\"url\"\":\"\"https://www.instagram.com/p/DUz1jVBjMJP/\"\",\"\"withAudio\"\":true}')",
+      "Bash(yt-dlp --cookies-from-browser chrome -F \"https://www.instagram.com/p/DUz1jVBjMJP/\")",
+      "Bash(ls -la ~/Downloads/2026-02-16_SKIN*)",
+      "Bash(curl -s -X POST http://localhost:8080/download -H 'Content-Type: application/json' -d '{\"url\":\"https://www.instagram.com/p/DR2TZAcDGWv/\",\"withAudio\":true}')",
+      "Bash(exiftool ~/Downloads/2025-12-04_housee_ofbeauty_DR2TZAcDGWv.jpg)"
     ]
   }
 }

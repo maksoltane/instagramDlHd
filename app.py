@@ -62,17 +62,68 @@ def strip_metadata(filepath):
         pass
 
 
-def download_image(url):
-    """Télécharge une image Instagram via gallery-dl (haute résolution)."""
+def break_perceptual_hash(filepath):
+    """Altère légèrement l'image pour casser le fingerprint perceptuel (pHash).
+    Applique un léger flou + shift de qualité JPEG via ffmpeg."""
+    try:
+        tmp_out = filepath + '.tmp.jpg'
+        subprocess.run(
+            ['ffmpeg', '-y', '-i', filepath,
+             '-vf', 'noise=c0s=3:allf=t,eq=brightness=0.01',
+             '-q:v', '2', tmp_out],
+            capture_output=True, text=True, timeout=30
+        )
+        if os.path.isfile(tmp_out) and os.path.getsize(tmp_out) > 0:
+            os.replace(tmp_out, filepath)
+    except Exception:
+        if os.path.isfile(filepath + '.tmp.jpg'):
+            os.remove(filepath + '.tmp.jpg')
+
+
+def download_image(url, info=None):
+    """Télécharge une image Instagram via gallery-dl (haute résolution),
+    supprime les métadonnées, casse le pHash et renomme proprement."""
     try:
         result = subprocess.run(
             ['gallery-dl', '--cookies-from-browser', 'chrome', '--directory', '.', '-d', DOWNLOADS_DIR, url],
             capture_output=True, text=True, timeout=60
         )
         if result.returncode == 0 and result.stdout.strip():
-            filepath = result.stdout.strip().split('\n')[-1]
+            # gallery-dl prefixe "# " si le fichier existait déjà (skip)
+            last_line = result.stdout.strip().split('\n')[-1]
+            filepath = last_line.lstrip('# ').strip()
             strip_metadata(filepath)
-            return True, os.path.basename(filepath)
+            break_perceptual_hash(filepath)
+            strip_metadata(filepath)  # 2e passe pour supprimer le comment ffmpeg
+
+            # Renommer : date_uploader_id.jpg
+            ext = Path(filepath).suffix or '.jpg'
+            upload_date = ''
+            uploader = ''
+            post_id = ''
+            if info:
+                ts = info.get('timestamp')
+                if ts:
+                    from datetime import datetime, timezone
+                    upload_date = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
+                uploader = re.sub(r'[^\w]', '_', info.get('channel', '') or info.get('uploader', '') or '')
+                post_id = info.get('display_id', '') or info.get('id', '')
+
+            parts = [p for p in [upload_date, uploader, post_id] if p]
+            new_name = '_'.join(parts) + ext if parts else os.path.basename(filepath)
+            new_path = os.path.join(DOWNLOADS_DIR, new_name)
+
+            # Éviter écrasement
+            if os.path.exists(new_path) and new_path != filepath:
+                base = '_'.join(parts)
+                i = 1
+                while os.path.exists(new_path):
+                    new_name = f"{base}_{i}{ext}"
+                    new_path = os.path.join(DOWNLOADS_DIR, new_name)
+                    i += 1
+
+            os.rename(filepath, new_path)
+            return True, new_name
         return False, result.stderr or "Échec du téléchargement"
     except Exception as e:
         return False, str(e)
@@ -164,7 +215,7 @@ def download_media():
 
     # --- Image : téléchargement via gallery-dl (haute résolution) ---
     if media_type == 'image':
-        success, detail = download_image(url)
+        success, detail = download_image(url, info)
         if success:
             return jsonify({
                 'success': True,
@@ -193,7 +244,11 @@ def download_media():
         ])
 
     cmd.extend([
-        '-o', '%(upload_date)s_%(title)s_%(uploader)s.%(ext)s',
+        '--write-thumbnail',
+        '--convert-thumbnails', 'jpg',
+        '--restrict-filenames',
+        '-o', '%(upload_date>%Y-%m-%d)s_%(uploader)s_%(id)s.%(ext)s',
+        '-o', 'thumbnail:%(upload_date>%Y-%m-%d)s_%(uploader)s_%(id)s_thumb.%(ext)s',
         '--progress',
         url
     ])
@@ -208,11 +263,34 @@ def download_media():
         )
 
         if result.returncode == 0:
+            # Chercher la miniature générée
+            thumbnail = None
+            combined = (result.stdout or '') + (result.stderr or '')
+            for line in combined.split('\n'):
+                if '_thumb.jpg' in line:
+                    # Extraire le nom de fichier
+                    for part in line.split():
+                        if '_thumb.jpg' in part:
+                            thumb_path = part.strip()
+                            if os.path.isfile(thumb_path):
+                                thumbnail = os.path.basename(thumb_path)
+                                break
+                            elif os.path.isfile(os.path.join(DOWNLOADS_DIR, part.strip())):
+                                thumbnail = part.strip()
+                                break
+            # Fallback: chercher le fichier thumb le plus récent
+            if not thumbnail:
+                import glob
+                thumbs = sorted(glob.glob(os.path.join(DOWNLOADS_DIR, '*_thumb.jpg')), key=os.path.getmtime, reverse=True)
+                if thumbs:
+                    thumbnail = os.path.basename(thumbs[0])
+
             return jsonify({
                 'success': True,
                 'message': '✅ Vidéo téléchargée avec succès',
                 'mediaType': 'video',
                 'withAudio': with_audio,
+                'thumbnail': thumbnail,
                 'details': result.stderr[-500:] if result.stderr else ''
             })
         else:
@@ -281,12 +359,22 @@ def split_video():
             if result.returncode != 0:
                 return jsonify({'error': f'Erreur ffmpeg partie {i+1}: {result.stderr[-300:]}'}), 500
 
+            # Générer miniature du premier frame
+            thumb_name = f"{base_name}_part{i + 1}_thumb.jpg"
+            thumb_path = os.path.join(DOWNLOADS_DIR, thumb_name)
+            subprocess.run(
+                ['ffmpeg', '-y', '-i', out_path, '-vframes', '1', '-q:v', '2', thumb_path],
+                capture_output=True, text=True, timeout=30
+            )
+            has_thumb = os.path.isfile(thumb_path)
+
             file_size = os.path.getsize(out_path)
             created_files.append({
                 'name': out_name,
                 'size': file_size,
                 'start': round(start, 1),
-                'duration': round(part_duration, 1)
+                'duration': round(part_duration, 1),
+                'thumbnail': thumb_name if has_thumb else None
             })
 
         return jsonify({
@@ -295,6 +383,15 @@ def split_video():
             'parts': parts,
             'files': created_files
         })
+
+
+@app.route('/thumbnail/<path:filename>', methods=['GET'])
+def serve_thumbnail(filename):
+    """Sert une miniature depuis le dossier Downloads."""
+    filepath = os.path.join(DOWNLOADS_DIR, filename)
+    if os.path.isfile(filepath) and filename.endswith('.jpg'):
+        return send_file(filepath, mimetype='image/jpeg')
+    return jsonify({'error': 'Thumbnail not found'}), 404
 
 
 @app.route('/health', methods=['GET'])
