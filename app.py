@@ -42,10 +42,24 @@ def detect_media_type(url):
         if result.returncode == 0:
             first_line = result.stdout.strip().split('\n')[0]
             info = json.loads(first_line)
-            vcodec = info.get('vcodec', 'none')
-            if vcodec == 'none' or vcodec is None:
-                return 'image', info
-            return 'video', info
+
+            # Vérifier le vcodec global
+            vcodec = info.get('vcodec')
+            if vcodec and vcodec != 'none':
+                return 'video', info
+
+            # Fallback: vérifier si des formats contiennent de la vidéo
+            formats = info.get('formats', [])
+            for f in formats:
+                fc = f.get('vcodec')
+                if fc and fc != 'none':
+                    return 'video', info
+
+            # Aussi vérifier l'extension et la durée
+            if info.get('duration') or info.get('ext') in ('mp4', 'webm', 'mkv'):
+                return 'video', info
+
+            return 'image', info
     except Exception:
         pass
     return 'video', None

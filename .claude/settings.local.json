@@ -27,7 +27,11 @@
       "Bash(yt-dlp --cookies-from-browser chrome -F \"https://www.instagram.com/p/DUz1jVBjMJP/\")",
       "Bash(ls -la ~/Downloads/2026-02-16_SKIN*)",
       "Bash(curl -s -X POST http://localhost:8080/download -H 'Content-Type: application/json' -d '{\"url\":\"https://www.instagram.com/p/DR2TZAcDGWv/\",\"withAudio\":true}')",
-      "Bash(exiftool ~/Downloads/2025-12-04_housee_ofbeauty_DR2TZAcDGWv.jpg)"
+      "Bash(exiftool ~/Downloads/2025-12-04_housee_ofbeauty_DR2TZAcDGWv.jpg)",
+      "Bash(curl -s -X POST http://localhost:8080/download -H 'Content-Type: application/json' -d '{\"url\":\"https://www.instagram.com/p/ChgD6qHJV1k/\",\"withAudio\":true}')",
+      "Read(//Users/Mak/Downloads/**)",
+      "Bash(ls -la ~/Downloads/2022-08-21_Nikki_Roth_ChgD6qHJV1k*)",
+      "Bash(ffprobe -v quiet -show_entries stream=width,height,codec_name -of csv ~/Downloads/2022-08-21_Nikki_Roth_ChgD6qHJV1k.mp4)"
     ]
   }
 }
